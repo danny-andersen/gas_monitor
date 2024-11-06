@@ -18,19 +18,18 @@
     // /*! Gas wait period */
     // uint8_t gas_wait;
 
-// #include "Arduino.h"
+#include <Arduino.h>
 #include <EncBreakout.h>
 #include <GasBreakout.h>
 #include <IOExpander.h>
 #include <PotBreakout.h>
-// #include "GasBreakout.h"
-
 #include <WiFi.h>
 #include <RunningMedian.h>
+
 #include "LocalSettings.h"
 
 #define BATTERY_VOLTAGE_PIN 0
-#define SOUNDER_PIN 9
+#define SOUNDER_PIN 2
 #define ADD_I2C 0x77
 
 #define BATTERY_ON_CHARGE 3.70
@@ -330,15 +329,14 @@ void setup(void)
   if (cache.resultsCacheCnt < CACHE_SIZE || (cache.resultsCacheCnt == 0 && cache.lastCacheCnt == 0) || (cache.lastCacheCnt == cache.resultsCacheCnt - 1)) {
     //This is OK
   } else {
-      if (Serial) Serial.println("Last result count: " + String(cache.lastCacheCnt) + " does not match cache count: " + String(cache.resultsCacheCnt) + " - forcing variable setup");
+    if (Serial) Serial.println("Last result count: " + String(cache.lastCacheCnt) + " does not match cache count: " + String(cache.resultsCacheCnt) + " - forcing variable setup");
     powerOn();
   }
   //read battery voltage
   float batteryVoltage = readBattery(false);
   if (batteryVoltage > BATTERY_ON_CHARGE && FLASH_LED) {
-    digitalWrite(LED_BUILTIN, HIGH);  // We have a USB power on - turn the LED on 
+    digitalWrite(LED_BUILTIN, HIGH);  // We have USB power - turn the LED on as not running from battery 
   }
-
   Wire.begin();     //I2C mode
 
   int alarmStatus = 0;
