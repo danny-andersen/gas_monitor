@@ -19,7 +19,6 @@
     // uint8_t gas_wait;
 
 // #include "Arduino.h"
-#include "bme68xLibrary.h"
 #include <EncBreakout.h>
 #include <GasBreakout.h>
 #include <IOExpander.h>
@@ -73,7 +72,6 @@
 // NO2 x1/30 for 5
 #define NO2_CRITICAL_THRESHOLD 30
 
-Bme68x bme;
 GasBreakout gas(Wire, 0x19);
 RunningMedian medianFilter(FILTER_SIZE);
 RunningMedian medianBatteryFilter(BATTERY_HISTORY_SIZE);
@@ -103,19 +101,15 @@ RTC_NOINIT_ATTR struct {
   bool criticalAlarmAcked;
   //Used to create a median filter to filter out sporadic large values
   uint8_t filterCnt;
-  uint8_t gasfilterCnt;
   float reducerRawValues[FILTER_SIZE];
   float nh3RawValues[FILTER_SIZE];
   float oxRawValues[FILTER_SIZE];
-  float gasrRawValues[FILTER_SIZE];
   // Totals used to create the current average to determine if a reading is above normal.
   // After a count of a 1000, the total and sample count is divided by 10 to give an historic average that is more sensitive to gradual trends in recent data
   float totalReducer;
   float totalNh3;
   float totalOx;
   float totalSampleCnt;
-  float totalGasR;
-  float totalGasRCnt;
   //Average out last samples of battery voltage to ensure we dont shutdown too early if get a rogue result
   float batteryVoltageHistory[BATTERY_HISTORY_SIZE];
 } cache;
@@ -158,7 +152,7 @@ float readBattery(bool powerOn) {
     value += analogReadMilliVolts(BATTERY_VOLTAGE_PIN);
   }
   currentValue = value / rounds;
-  if (Serial) Serial.println("Current BV direct: " + String(currentValue*2/1000));
+  // if (Serial) Serial.println("Current BV direct: " + String(currentValue*2/1000));
 
   if (powerOn) {
     //Initialise history array
@@ -188,23 +182,7 @@ float readBattery(bool powerOn) {
   return retValue * 2.0/1000;
 }
 
-bool readBME(bme68xData *data) {
-  bool dataValid = false;
-	bme.setOpMode(BME68X_FORCED_MODE);
-	delay(500+bme.getMeasDur()/200);
-	if (bme.fetchData())
-	{
-		bme.getData(*data);
-    dataValid = true;
-		// Serial.print(String(millis()) + ", ");
-	} else {
-    if (Serial) Serial.println("No bme data - Sensor status: " + bme.statusString());
-  }
-  return dataValid;
-
-}
-
-uint8_t checkAlarmCondition(bool idacReady, bme68xData *bmeData, bool gasReady, GasBreakout::Reading *gas) {
+uint8_t checkAlarmCondition(GasBreakout::Reading *gas) {
   // Return status: 
   // alarm status = 0 -> no alarm, Bit 7 set -> Air quality issue, Bit 5+4 -> NO2 issue, 3+2 -> NH3 issue, 1+0 -> CO issue
   // 1 = CO warning, 2 = CO high, 3 = CO critical, 
@@ -216,90 +194,78 @@ uint8_t checkAlarmCondition(bool idacReady, bme68xData *bmeData, bool gasReady, 
   // If only Reducer triggers it is CO 
   // If only NH3 triggers it is likely to be NH3/Ammonia
   // Important note: Reducing + NH3 sensors decrease in resistance with increasing gas. The Oxidiser increases in resistance
-  if (gasReady) {
-    //Have a valid reading 
-    if (cache.totalSampleCnt > 30) {
-      //Have a good average sample value to test
-      //Now check for NH3 - if this has triggered then likely that its NH3, not CO that has triggered the sensor
-      float currentNh3Avg = cache.totalNh3 / cache.totalSampleCnt;
-      float currentReducerAvg = cache.totalReducer / cache.totalSampleCnt;
-      if (gas->nh3 <= currentNh3Avg * NH3_NH3_CRITICAL_THRESHOLD && gas->reducing <= currentReducerAvg * NH3_REDUCER_CRITICAL_THRESHOLD) {
-        //Could be ammonia, ethanol or propane/methane/butane detected
-        // Serial.println("Alarm 6: Reading = " + String(gas->nh3) + " Avg: " + String(currentNh3Avg));
-        alarmStatus |= 0x0C;
-        cache.lastNH3AlarmStatus = alarmStatus;
-      } else if (gas->nh3 <= currentNh3Avg * NH3_NH3_HIGH_THRESHOLD && gas->reducing <= currentReducerAvg * NH3_REDUCER_HIGH_THRESHOLD) {
-        //Could be ammonia, ethanol or propane/methane/butane detected
-        // Serial.println("Alarm 5: Reading = " + String(gas->nh3) + " Avg: " + String(currentNh3Avg));
-        alarmStatus |= 0x08;
-        cache.lastNH3AlarmStatus = alarmStatus;
-      } else if (gas->nh3 <= currentNh3Avg * NH3_NH3_WARNING_THRESHOLD && gas->reducing <= currentReducerAvg * NH3_REDUCER_WARNING_THRESHOLD) {
-        //Could be ammonia, ethanol or propane/methane/butane detected
-        // Serial.println("Alarm 4: Reading = " + String(gas->nh3) + " Avg: " + String(currentNh3Avg));
-        alarmStatus |= 0x04;
-        cache.lastNH3AlarmStatus = alarmStatus;
-      }
-      if (gas->reducing <= currentReducerAvg * CO_CRITICAL_THRESHOLD && (cache.lastNH3AlarmStatus & 0x0C) == 0) {
-        //CO Alarm only if no NH3 alarm
-        // Serial.println("Alarm 3: Reading = " + String(gas->reducing) + " Avg: " + String(currentReducerAvg));
-        alarmStatus |= 0x03;
-      } else if (gas->reducing <= currentReducerAvg * CO_HIGH_THRESHOLD && (cache.lastNH3AlarmStatus & 0x0C) == 0) {
-        //CO Alarm only if no NH3 alarm
-        // Serial.println("Alarm 2: Reading = " + String(gas->reducing) + " Avg: " + String(currentReducerAvg));
-        alarmStatus |= 0x02;
-      } else if (gas->reducing <= currentReducerAvg * CO_WARNING_THRESHOLD && (cache.lastNH3AlarmStatus & 0x0C) == 0) {
-        //CO Alarm only if no NH3 alarm
-        // Serial.println("Alarm 1: Reading = " + String(gas->reducing) + " Avg: " + String(currentReducerAvg));
-        alarmStatus |= 0x01;
-      } 
-      if  (gas->reducing > currentReducerAvg * CO_WARNING_THRESHOLD) {
-        //Reducer has recovered so can reset any historic NH3 alarm
-        cache.lastNH3AlarmStatus = 0;
-      }
-      //Check for Nitrogen Dioxide
-      float currentOxAvg = cache.totalOx / cache.totalSampleCnt;
-      if (gas->oxidising >= currentOxAvg * NO2_WARNING_THRESHOLD) {
-        //NO2 warning
-        // Serial.println("Alarm 7: Reading = " + String(gas->oxidising) + " Avg: " + String(currentOxAvg));
-        alarmStatus |= 0x10;
-      }
-      if (gas->oxidising >= currentOxAvg * NO2_HIGH_THRESHOLD) {
-        // Serial.println("Alarm 8: Reading = " + String(gas->oxidising) + " Avg: " + String(currentOxAvg));
-        alarmStatus |= 0x20;
-      }
-      if (gas->oxidising >= currentOxAvg * NO2_CRITICAL_THRESHOLD) {
-        // Serial.println("Alarm 9: Reading = " + String(gas->oxidising) + " Avg: " + String(currentOxAvg));
-        alarmStatus |= 0x30;
-      }
+  //Have a valid reading 
+  if (cache.totalSampleCnt > 30) {
+    //Have a good average sample value to test
+    //Now check for NH3 - if this has triggered then likely that its NH3, not CO that has triggered the sensor
+    float currentNh3Avg = cache.totalNh3 / cache.totalSampleCnt;
+    float currentReducerAvg = cache.totalReducer / cache.totalSampleCnt;
+    if (gas->nh3 <= currentNh3Avg * NH3_NH3_CRITICAL_THRESHOLD && gas->reducing <= currentReducerAvg * NH3_REDUCER_CRITICAL_THRESHOLD) {
+      //Could be ammonia, ethanol or propane/methane/butane detected
+      // Serial.println("Alarm 6: Reading = " + String(gas->nh3) + " Avg: " + String(currentNh3Avg));
+      alarmStatus |= 0x0C;
+      cache.lastNH3AlarmStatus = alarmStatus;
+    } else if (gas->nh3 <= currentNh3Avg * NH3_NH3_HIGH_THRESHOLD && gas->reducing <= currentReducerAvg * NH3_REDUCER_HIGH_THRESHOLD) {
+      //Could be ammonia, ethanol or propane/methane/butane detected
+      // Serial.println("Alarm 5: Reading = " + String(gas->nh3) + " Avg: " + String(currentNh3Avg));
+      alarmStatus |= 0x08;
+      cache.lastNH3AlarmStatus = alarmStatus;
+    } else if (gas->nh3 <= currentNh3Avg * NH3_NH3_WARNING_THRESHOLD && gas->reducing <= currentReducerAvg * NH3_REDUCER_WARNING_THRESHOLD) {
+      //Could be ammonia, ethanol or propane/methane/butane detected
+      // Serial.println("Alarm 4: Reading = " + String(gas->nh3) + " Avg: " + String(currentNh3Avg));
+      alarmStatus |= 0x04;
+      cache.lastNH3AlarmStatus = alarmStatus;
     }
-    if (alarmStatus == 0) {
-      //Only add current values to average if not in an alarm status
-      //As the average is the normal baseline
-      cache.totalReducer += gas->reducing;
-      cache.totalNh3 += gas->nh3;
-      cache.totalSampleCnt++;
-      cache.totalOx += gas->oxidising;
-      if (cache.totalSampleCnt >= 1000) {
-        //Divide sample count and total by 10. 
-        //This allows more recent samples to have a greater impact on the average, allowing for some drift in the sensor
-        // Serial.println("Scaling down total samplecnt" );
-        cache.totalSampleCnt /= 10;
-        cache.totalReducer /= 10;
-        cache.totalNh3 /= 10;
-        cache.totalOx /= 10;
-      }
+    if (gas->reducing <= currentReducerAvg * CO_CRITICAL_THRESHOLD && (cache.lastNH3AlarmStatus & 0x0C) == 0) {
+      //CO Alarm only if no NH3 alarm
+      // Serial.println("Alarm 3: Reading = " + String(gas->reducing) + " Avg: " + String(currentReducerAvg));
+      alarmStatus |= 0x03;
+    } else if (gas->reducing <= currentReducerAvg * CO_HIGH_THRESHOLD && (cache.lastNH3AlarmStatus & 0x0C) == 0) {
+      //CO Alarm only if no NH3 alarm
+      // Serial.println("Alarm 2: Reading = " + String(gas->reducing) + " Avg: " + String(currentReducerAvg));
+      alarmStatus |= 0x02;
+    } else if (gas->reducing <= currentReducerAvg * CO_WARNING_THRESHOLD && (cache.lastNH3AlarmStatus & 0x0C) == 0) {
+      //CO Alarm only if no NH3 alarm
+      // Serial.println("Alarm 1: Reading = " + String(gas->reducing) + " Avg: " + String(currentReducerAvg));
+      alarmStatus |= 0x01;
+    } 
+    if  (gas->reducing > currentReducerAvg * CO_WARNING_THRESHOLD) {
+      //Reducer has recovered so can reset any historic NH3 alarm
+      cache.lastNH3AlarmStatus = 0;
+    }
+    //Check for Nitrogen Dioxide
+    float currentOxAvg = cache.totalOx / cache.totalSampleCnt;
+    if (gas->oxidising >= currentOxAvg * NO2_WARNING_THRESHOLD) {
+      //NO2 warning
+      // Serial.println("Alarm 7: Reading = " + String(gas->oxidising) + " Avg: " + String(currentOxAvg));
+      alarmStatus |= 0x10;
+    }
+    if (gas->oxidising >= currentOxAvg * NO2_HIGH_THRESHOLD) {
+      // Serial.println("Alarm 8: Reading = " + String(gas->oxidising) + " Avg: " + String(currentOxAvg));
+      alarmStatus |= 0x20;
+    }
+    if (gas->oxidising >= currentOxAvg * NO2_CRITICAL_THRESHOLD) {
+      // Serial.println("Alarm 9: Reading = " + String(gas->oxidising) + " Avg: " + String(currentOxAvg));
+      alarmStatus |= 0x30;
     }
   }
-  //TODO: Check for BME688 GAS Resistance and IDAQ changes
-  //But it is unclear at this time how the BME688 reacts to the gases detected by the MICS6814 
-  //nor its reaction to other gases (i.e. H2S) or the relationship with IDAQ - given that IDAQ doesnt change with resistance...probably because there is no history...
-  // if (idacReady) {
-  //   float gasRAvg = cache.totalGasR / cache.totalGasRCnt;
-  //   cache.totalGasR += bmeData->gas_resistance;
-  //   if (bmeData ->gas_resistance )
-  // // if (alarmStatus == 0 and )
-
-  // }
+  if (alarmStatus == 0) {
+    //Only add current values to average if not in an alarm status
+    //As the average is the normal baseline
+    cache.totalReducer += gas->reducing;
+    cache.totalNh3 += gas->nh3;
+    cache.totalSampleCnt++;
+    cache.totalOx += gas->oxidising;
+    if (cache.totalSampleCnt >= 1000) {
+      //Divide sample count and total by 10. 
+      //This allows more recent samples to have a greater impact on the average, allowing for some drift in the sensor
+      // Serial.println("Scaling down total samplecnt" );
+      cache.totalSampleCnt /= 10;
+      cache.totalReducer /= 10;
+      cache.totalNh3 /= 10;
+      cache.totalOx /= 10;
+    }
+  }
   return alarmStatus;
 }
 
@@ -317,17 +283,12 @@ void powerOn() {
       cache.reducerRawValues[i] = 0;
       cache.nh3RawValues[i] = 0;
       cache.oxRawValues[i] = 0;
-      cache.gasrRawValues[i] = 0;
     }
     cache.filterCnt = 0;
-    cache.gasfilterCnt = 0;
-    cache.totalGasRCnt = 0;
     cache.totalNh3 = 0;
     cache.totalOx = 0;
     cache.totalReducer = 0;
     cache.totalSampleCnt = 0;
-    cache.totalGasR = 0;
-    cache.totalGasRCnt = 0;
 
     cache.powerOnCnt = FILTER_SIZE * 2;
     //Read battery and set up average array
@@ -344,7 +305,11 @@ void setup(void)
   	Serial.println("Setup start");
   }
   pinMode(LED_BUILTIN, OUTPUT);
+  if (batteryVoltage > BATTERY_ON_CHARGE && FLASH_LED) {
+    digitalWrite(LED_BUILTIN, HIGH);  // We have a USB power on - turn the LED on 
+  }
   pinMode(SOUNDER_PIN, OUTPUT);
+  digitalWrite(SOUNDER_PIN, LOW); //Turn sounder off
 
   if (esp_reset_reason() == ESP_RST_POWERON) {
     Serial.printf("ESP was just switched ON\r\n");
@@ -372,82 +337,12 @@ void setup(void)
   //read battery voltage
   float batteryVoltage = readBattery(false);
   
-  if (batteryVoltage > BATTERY_ON_CHARGE && FLASH_LED) {
-    digitalWrite(LED_BUILTIN, HIGH);  // turn the LED on (HIGH is the voltage level)
-  }
-
   Wire.begin();     //I2C mode
 
   int alarmStatus = 0;
-  bool idacReady = false;
-  bool bmeReady = false;
-  bme68xData data;
   int tries = 0;
-  while (!idacReady && tries++ < 3) {
-    //Repeat gas measurement for up to 3 attempts until data is ready
-    if (!bmeReady) {
-      bme.begin(ADD_I2C, Wire);     //I2C mode
-      if(bme.checkStatus())
-      {
-        if (bme.checkStatus() == BME68X_ERROR)
-        {
-          if (Serial) Serial.println("Sensor error:" + bme.statusString());
-        }
-        else if (bme.checkStatus() == BME68X_WARNING)
-        {
-          if (Serial) Serial.println("Sensor Warning:" + bme.statusString());
-        }
-        delay(100);
-      } else {
-        bmeReady = true;
-        /* Set the default configuration for temperature, pressure and humidity */
-        bme.setTPH();
-        /* Set the heater configuration to 300 deg C for 100ms for Forced mode */
-        bme.setHeaterProf(300, 100);
-        if (Serial) Serial.println("BME688 - Initialised");
-      }
-    }
-    if (bmeReady) {
-      if (readBME(&data)) {
-        idacReady = data.status & 0x10;
-        if (idacReady) {
-          if (Serial) {
-            Serial.print("Temp:");
-            Serial.print(String(data.temperature) + ", ");
-            Serial.print("Pressure:");
-            Serial.print(String(data.pressure/1000) + ", ");
-            Serial.print("Humidity:");
-            Serial.print(String(data.humidity) + ", ");
-            Serial.print("Gas-Resistance:");
-            Serial.print(String(data.gas_resistance/1000) + ", ");
-            Serial.print("DAC:");
-            Serial.println(String(data.idac) + ", ");
-          }
-
-          //Apply Median filter to gas value
-          cache.gasrRawValues[cache.gasfilterCnt] = data.gas_resistance;
-          cache.gasfilterCnt++;
-          if (cache.gasfilterCnt >= FILTER_SIZE) {
-            cache.gasfilterCnt = 0;
-          }
-          //Load filter with last n raw values
-          medianFilter.clear();
-          for (int i=0; i<FILTER_SIZE; i++) {
-            medianFilter.add(cache.gasrRawValues[i]);
-          }
-          data.gas_resistance = medianFilter.getMedian();
-
-        } else {
-          if (Serial) Serial.println("Measurements not ready, status: " + String(data.status, HEX));
-          delay(100);
-        }
-      }
-    }
-  }
-
   bool gasReady = false;
   GasBreakout::Reading reading;
-  tries = 0;
   while (!gasReady && tries++ < 3) {
     if(!gas.initialise()){
         if (Serial) Serial.println("MICS6814 - Not Initialised");
@@ -501,20 +396,13 @@ void setup(void)
   
   if (Serial) Serial.printf("Voltage: %4.3f V\r\n", batteryVoltage);
 
-  if (cache.powerOnCnt == 0 && (gasReady || idacReady)) {
+  if (cache.powerOnCnt == 0 && gasReady) {
     //Not in powerOnCnt settle period and we have readings - stash them in the cache
-    alarmStatus = checkAlarmCondition(idacReady, &data, gasReady, &reading);
+    alarmStatus = checkAlarmCondition(&reading);
     //Drive Piezo if in critical alarm
     driveSounder(alarmStatus);
     String resultStr = "&bv=" + String(batteryVoltage) + "&a=" + String(alarmStatus);
-    if (gasReady) {
-      resultStr += "&red=" + String(reading.reducing) + "&nh3=" + String(reading.nh3) + "&ox=" + String(reading.oxidising); 
-    }
-    if (idacReady) {
-      resultStr += "&t=" + String(data.temperature,2) + "&p=" + String(data.pressure,2) + "&h=" + String(data.humidity,1) + 
-        "&gr=" + String(data.gas_resistance,2) + "&dac=" + String(data.idac) + "&red=" + String(reading.reducing) + "&nh3=" + String(reading.nh3) + 
-        "&ox=" + String(reading.oxidising);
-    }
+    resultStr += "&red=" + String(reading.reducing) + "&nh3=" + String(reading.nh3) + "&ox=" + String(reading.oxidising); 
     //Add to cache in RTC 
     resultStr.toCharArray(cache.resultsCache[cache.resultsCacheCnt] , RESULTS_LEN);
     cache.resultsTimestamp[cache.resultsCacheCnt] = cache.activeTimeMs + millis();
