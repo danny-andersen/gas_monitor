@@ -305,14 +305,14 @@ void setup(void)
   	Serial.println("Setup start");
   }
   pinMode(LED_BUILTIN, OUTPUT);
-  if (batteryVoltage > BATTERY_ON_CHARGE && FLASH_LED) {
-    digitalWrite(LED_BUILTIN, HIGH);  // We have a USB power on - turn the LED on 
-  }
   pinMode(SOUNDER_PIN, OUTPUT);
   digitalWrite(SOUNDER_PIN, LOW); //Turn sounder off
 
   if (esp_reset_reason() == ESP_RST_POWERON) {
     Serial.printf("ESP was just switched ON\r\n");
+    if (FLASH_LED) {
+      digitalWrite(LED_BUILTIN, HIGH);  // We have a USB power on - turn the LED on 
+    }
     //Wait a bit to allow any download of new code and for sensors to settle
     delay(20000);
     powerOn();
@@ -327,7 +327,6 @@ void setup(void)
       default:                        Serial.printf("Wakeup was not caused by deep sleep: %d\n", wakeup_reason); break;
     }
   }
-
   if (cache.resultsCacheCnt < CACHE_SIZE || (cache.resultsCacheCnt == 0 && cache.lastCacheCnt == 0) || (cache.lastCacheCnt == cache.resultsCacheCnt - 1)) {
     //This is OK
   } else {
@@ -336,7 +335,10 @@ void setup(void)
   }
   //read battery voltage
   float batteryVoltage = readBattery(false);
-  
+  if (batteryVoltage > BATTERY_ON_CHARGE && FLASH_LED) {
+    digitalWrite(LED_BUILTIN, HIGH);  // We have a USB power on - turn the LED on 
+  }
+
   Wire.begin();     //I2C mode
 
   int alarmStatus = 0;
