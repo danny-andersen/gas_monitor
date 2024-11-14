@@ -1,23 +1,3 @@
-/**
- * Copyright (C) 2021 Bosch Sensortec GmbH
- *
- * SPDX-License-Identifier: BSD-3-Clause
- * 
- */
-
-// /*! Contains new_data, gasm_valid & heat_stab */
-// uint8_t status;
-// /*! The index of the heater profile used */
-// uint8_t gas_index;
-// /*! Measurement index to track order */
-// uint8_t meas_index;
-// /*! Heater resistance */
-// uint8_t res_heat;
-// /*! Current DAC */
-// uint8_t idac;
-// /*! Gas wait period */
-// uint8_t gas_wait;
-
 #include <Arduino.h>
 #include <EncBreakout.h>
 #include <GasBreakout.h>
@@ -31,7 +11,9 @@
 #define BATTERY_VOLTAGE_PIN 0
 #define SOUNDER_PIN 2
 #define SENSOR_POWER_PIN 3
+#define TEST_PIN GPIO_NUM_4
 #define ADD_I2C 0x77
+#define BUTTON_PIN_BITMASK(GPIO) (1ULL << GPIO)  // 2 ^ GPIO_NUMBER in hex
 
 #define BATTERY_ON_CHARGE 4.1
 #define LOW_BATTERY_VOLTAGE 3.20
@@ -44,10 +26,9 @@
 #define CRITICAL_TIME_TO_SLEEP 2  /* Time ESP32 will go to sleep in critical alarm (in seconds) */
 
 #define FLASH_LED true
-#define CACHE_SIZE 32
-#define RESULTS_LEN 128
+#define CACHE_SIZE 32     //Number of results that are cached
+#define RESULTS_LEN 100   //Number of chars in a result string that are cached
 #define FILTER_SIZE 9
-#define POWER_ON_CNT 30         //Number of samples to run without sleeping before we start measuring properly after power on
 #define BATTERY_HISTORY_SIZE 5  //Number of previous battery voltages to get the median over
 
 //Reducer response is x10 for 50ppm, x100 for 1000ppm
@@ -442,7 +423,7 @@ void powerOn() {
   cache.totalReducer = 0;
   cache.totalSampleCnt = 0;
 
-  cache.powerOnCnt = FILTER_SIZE * 2;
+  cache.powerOnCnt = FILTER_SIZE * 4;
   //Read battery and set up average array
   readBattery(true);
 }
@@ -456,11 +437,28 @@ void setup(void) {
   if (Serial) {
     Serial.println("Setup start");
   }
+  //See if the test button has been pressed - if so turn on the sounder
+  pinMode(TEST_PIN, INPUT_PULLUP);
+  bool inTestMode = !digitalRead(TEST_PIN);
   pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(SENSOR_POWER_PIN, OUTPUT);
-  digitalWrite(SENSOR_POWER_PIN, HIGH);  //Turn on power to the sensor
   pinMode(SOUNDER_PIN, OUTPUT);
   digitalWrite(SOUNDER_PIN, LOW);  //Turn sounder off
+
+  if (inTestMode) {
+    //Turn on led and drive sounder while button is pressed
+    digitalWrite(LED_BUILTIN, HIGH);
+    digitalWrite(SOUNDER_PIN, HIGH);  //Turn sounder on
+    while (inTestMode) {
+      inTestMode = !digitalRead(TEST_PIN);
+      delay(100);
+    }
+    digitalWrite(SOUNDER_PIN, LOW);  //Turn sounder on
+    //Test button has been released - now carry on as though we have been asleep
+  }
+
+  //Turn on power to the sensor
+  pinMode(SENSOR_POWER_PIN, OUTPUT);
+  digitalWrite(SENSOR_POWER_PIN, HIGH);  
 
   if (esp_reset_reason() == ESP_RST_POWERON) {
     Serial.printf("ESP was just switched ON\r\n");
@@ -470,7 +468,7 @@ void setup(void) {
     //Wait a bit to allow any download of new code and for sensors to settle
     delay(20000);
     powerOn();
-  } else if (esp_reset_reason() == ESP_RST_DEEPSLEEP) {
+  } else if (Serial && esp_reset_reason() == ESP_RST_DEEPSLEEP) {
     int wakeup_reason = esp_sleep_get_wakeup_cause();
     switch (wakeup_reason) {
       case ESP_SLEEP_WAKEUP_EXT0: Serial.println("Wakeup caused by external signal using RTC_IO"); break;
@@ -498,8 +496,9 @@ void setup(void) {
   int alarmStatus = 0;
   GasBreakout::Reading reading = readSensor();
 
-  if (cache.powerOnCnt > 0) {
+  if (cache.powerOnCnt == 0) {
     //Let the sensor warm up until we have a settled set of results after initial power up
+    //Otherwise turn off the power
     digitalWrite(SENSOR_POWER_PIN, LOW);  //Turn off  power to the sensor
   }
 
@@ -573,6 +572,7 @@ void setup(void) {
     delay(2000);
   }
   esp_sleep_enable_timer_wakeup(sleepTimeSecs * uS_TO_S_FACTOR);
+  esp_sleep_enable_ext1_wakeup_io(BUTTON_PIN_BITMASK(TEST_PIN), ESP_EXT1_WAKEUP_ANY_LOW);
   cache.activeTimeMs += millis() + (sleepTimeSecs * 1000);
   esp_deep_sleep_start();
 }
