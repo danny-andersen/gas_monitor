@@ -46,11 +46,11 @@
 #define NH3_NH3_HIGH_THRESHOLD 0.4
 #define NH3_NH3_CRITICAL_THRESHOLD 0.3
 // NO2 max limit is 1ppm, 3ppm is high, 5 ppm is critical
-// No2 ~x1/7 for 1
+// No2 ~x7 for 1
 #define NO2_WARNING_THRESHOLD 7
-// NO2 x1/20 for 3
+// NO2 x20 for 3
 #define NO2_HIGH_THRESHOLD 15
-// NO2 x1/30 for 5
+// NO2 x30 for 5
 #define NO2_CRITICAL_THRESHOLD 30
 
 GasBreakout gas(Wire, 0x19);
@@ -166,11 +166,11 @@ float readBattery(bool powerOn) {
 
 uint8_t checkAlarmCondition(GasBreakout::Reading *gas) {
   // Return status:
-  // alarm status = 0 -> no alarm, Bit 7 set -> Air quality issue, Bit 5+4 -> NO2 issue, 3+2 -> NH3 issue, 1+0 -> CO issue
-  // 1 = CO warning, 2 = CO high, 3 = CO critical,
-  // 4 = NH3/methane/propane warning, 5 = NH3/methane is high, 6 = NH3/Methane critical,
-  // 7 = NO2 warning, 8 = NO2 high, 9 = NO2 critical,
-  // 10 = Air quality issue
+  // alarm status = 0 -> no alarm, Bit 5+4 -> NO2 issue, 3+2 -> NH3 issue, 1+0 -> CO issue
+  // 0x10, 0x20, 0x30 -> 16, 32, 48 NO2 warning / high / critical
+  // 0x08, 0x04, 0xC0 -> 4, 8, 12 -> NH3 issues
+  // 1, 2, 3 -> CO issue
+
   uint8_t alarmStatus = 0;
   // Work out difference to current average for CO and NH3 sensors; if both trigger then it is Ammonia, ethanol, hydrogen or methane/propane/butane
   // If only Reducer triggers it is CO
