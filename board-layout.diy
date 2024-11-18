@@ -18,10 +18,10 @@
       <value></value>
       <controlPoints>
         <point x="3.6" y="1.9"/>
-        <point x="5.1" y="2.9"/>
+        <point x="5.0" y="2.9"/>
       </controlPoints>
       <firstPoint x="3.6" y="1.9"/>
-      <secondPoint x="5.1" y="2.9"/>
+      <secondPoint x="5.0" y="2.9"/>
       <boardColor hex="f8ebb3"/>
       <borderColor hex="ada47d"/>
       <coordinateColor hex="b6b6b6"/>
@@ -29,8 +29,8 @@
       <coordinateOrigin>Top_Left</coordinateOrigin>
       <coordinateDisplay>One_Side</coordinateDisplay>
       <yType>Letters</yType>
-      <length value="15.0" unit="px"/>
-      <width value="9.0" unit="px"/>
+      <length value="299.99999999999983" unit="px"/>
+      <width value="200.0" unit="px"/>
       <mode>TwoPoints</mode>
       <spacing value="0.1" unit="in"/>
       <stripColor hex="da8a67"/>
@@ -72,9 +72,9 @@
       <length value="0.5" unit="in"/>
       <width value="0.125" unit="in"/>
       <points>
-        <point x="4.5" y="2.7"/>
-        <point x="4.5" y="2.5"/>
-        <point x="4.5" y="2.6"/>
+        <point x="4.8" y="2.7"/>
+        <point x="4.8" y="2.5"/>
+        <point x="4.8" y="2.6"/>
       </points>
       <bodyColor hex="82cffd"/>
       <borderColor hex="5b90b1"/>
@@ -135,10 +135,10 @@
       <alpha>127</alpha>
       <orientation>DEFAULT</orientation>
       <controlPoints>
-        <point x="5.0" y="2.0"/>
-        <point x="5.0" y="2.1"/>
-        <point x="5.0" y="2.2"/>
-        <point x="5.0" y="2.3"/>
+        <point x="4.9" y="2.0"/>
+        <point x="4.9" y="2.1"/>
+        <point x="4.9" y="2.2"/>
+        <point x="4.9" y="2.3"/>
       </controlPoints>
       <rowCount>1</rowCount>
       <columnCount>4</columnCount>
@@ -200,10 +200,10 @@
       <name>W1</name>
       <alpha>127</alpha>
       <controlPoints2>
-        <point x="5.0" y="2.8"/>
-        <point x="5.5" y="2.8"/>
-        <point x="5.6" y="2.7"/>
-        <point x="6.0" y="2.7"/>
+        <point x="4.9" y="2.8"/>
+        <point x="5.4" y="2.8"/>
+        <point x="5.5" y="2.7"/>
+        <point x="5.9" y="2.7"/>
       </controlPoints2>
       <color hex="ff0009"/>
       <pointCount>FOUR</pointCount>
@@ -218,10 +218,10 @@
       <name>W2</name>
       <alpha>127</alpha>
       <controlPoints2>
-        <point x="5.0" y="2.4"/>
-        <point x="5.5" y="2.4"/>
-        <point x="5.5" y="2.6"/>
-        <point x="6.0" y="2.4"/>
+        <point x="4.9" y="2.4"/>
+        <point x="5.4" y="2.4"/>
+        <point x="5.4" y="2.6"/>
+        <point x="5.9" y="2.4"/>
       </controlPoints2>
       <color hex="000000"/>
       <pointCount>FOUR</pointCount>
@@ -235,11 +235,11 @@
     <diylc.misc.WrapLabel>
       <name>L1</name>
       <controlPoints>
+        <point x="4.999999999999999" y="2.0"/>
         <point x="5.1" y="2.0"/>
-        <point x="6.595" y="2.6"/>
       </controlPoints>
-      <firstPoint x="5.1" y="2.0"/>
-      <secondPoint x="6.595" y="2.6"/>
+      <firstPoint x="4.999999999999999" y="2.0"/>
+      <secondPoint x="5.1" y="2.0"/>
       <font name="Dialog.plain" size="10" style="0"/>
       <color hex="000000"/>
       <horizontalAlignment>LEFT</horizontalAlignment>
@@ -248,11 +248,11 @@
     <diylc.misc.WrapLabel>
       <name>L2</name>
       <controlPoints>
+        <point x="4.999999999999999" y="2.3"/>
         <point x="5.1" y="2.3"/>
-        <point x="6.595" y="2.9"/>
       </controlPoints>
-      <firstPoint x="5.1" y="2.3"/>
-      <secondPoint x="6.595" y="2.9"/>
+      <firstPoint x="4.999999999999999" y="2.3"/>
+      <secondPoint x="5.1" y="2.3"/>
       <font name="Dialog.plain" size="10" style="0"/>
       <color hex="000000"/>
       <horizontalAlignment>LEFT</horizontalAlignment>
@@ -261,11 +261,11 @@
     <diylc.misc.WrapLabel>
       <name>L3</name>
       <controlPoints>
+        <point x="4.999999999999999" y="2.2"/>
         <point x="5.1" y="2.2"/>
-        <point x="6.595" y="2.8"/>
       </controlPoints>
-      <firstPoint x="5.1" y="2.2"/>
-      <secondPoint x="6.595" y="2.8"/>
+      <firstPoint x="4.999999999999999" y="2.2"/>
+      <secondPoint x="5.1" y="2.2"/>
       <font name="Dialog.plain" size="10" style="0"/>
       <color hex="000000"/>
       <horizontalAlignment>LEFT</horizontalAlignment>
@@ -275,10 +275,10 @@
       <name>L4</name>
       <controlPoints>
         <point x="6.0" y="2.5"/>
-        <point x="7.495" y="3.1"/>
+        <point x="6.3" y="2.5"/>
       </controlPoints>
       <firstPoint x="6.0" y="2.5"/>
-      <secondPoint x="7.495" y="3.1"/>
+      <secondPoint x="6.3" y="2.5"/>
       <font name="Dialog.plain" size="10" style="0"/>
       <color hex="000000"/>
       <horizontalAlignment>LEFT</horizontalAlignment>
@@ -391,11 +391,11 @@
     <diylc.misc.WrapLabel>
       <name>L13</name>
       <controlPoints>
-        <point x="5.1" y="2.1"/>
-        <point x="6.595" y="2.7"/>
+        <point x="4.999999999999999" y="2.1"/>
+        <point x="5.2" y="2.1"/>
       </controlPoints>
-      <firstPoint x="5.1" y="2.1"/>
-      <secondPoint x="6.595" y="2.7"/>
+      <firstPoint x="4.999999999999999" y="2.1"/>
+      <secondPoint x="5.2" y="2.1"/>
       <font name="Dialog.plain" size="10" style="0"/>
       <color hex="000000"/>
       <horizontalAlignment>LEFT</horizontalAlignment>
@@ -404,11 +404,11 @@
     <diylc.misc.WrapLabel>
       <name>L14</name>
       <controlPoints>
-        <point x="5.3" y="2.2"/>
-        <point x="6.795" y="2.8"/>
+        <point x="5.2" y="2.2"/>
+        <point x="5.6" y="2.2"/>
       </controlPoints>
-      <firstPoint x="5.3" y="2.2"/>
-      <secondPoint x="6.795" y="2.8"/>
+      <firstPoint x="5.2" y="2.2"/>
+      <secondPoint x="5.6" y="2.2"/>
       <font name="Dialog.plain" size="10" style="0"/>
       <color hex="000000"/>
       <horizontalAlignment>LEFT</horizontalAlignment>
