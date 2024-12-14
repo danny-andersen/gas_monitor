@@ -271,7 +271,7 @@ uint8_t checkAlarmCondition(GasBreakout::Reading *gas)
     }
   }
 
-  if (alarmStatus == 0)
+  if (alarmStatus & 0x7F == 0)
   {
     // Only add current values to average if not in an alarm status
     // As the average is the normal baseline
@@ -311,6 +311,7 @@ GasBreakout::Reading readSensor()
     gasReady = gas.initialise();
     if (gasReady)
     {
+      delay(1000);
       if (Serial)
         Serial.println("MICS6814 - Initialised");
       reading = gas.readAll();
@@ -577,86 +578,86 @@ void setup(void)
       Serial.println("Last result count: " + String(cache.lastCacheCnt) + " does not match cache count: " + String(cache.resultsCacheCnt) + " - forcing variable setup");
     powerOn();
   }
-  bool stayAwake = true;
+  bool stayAwake = false;
   uint64_t sleepTimeSecs = NORMAL_TIME_TO_SLEEP;
   float batteryVoltage = 0.0;
-  while (stayAwake)
+  stayAwake = false;
+  if (inTestMode)
   {
-    // Only loop if need to stay awake and powered on as this increases the sensitivity of the sensor 
+    // Turn on led and drive sounder while button is pressed
+    digitalWrite(LED_BUILTIN, HIGH);
+    digitalWrite(SOUNDER_PIN, HIGH); // Turn sounder on
+    while (inTestMode)
+    {
+      inTestMode = !digitalRead(TEST_PIN);
+      delay(100);
+    }
+    digitalWrite(SOUNDER_PIN, LOW); // Turn sounder on
+    // Test button has been released - now carry on as though we have been asleep
+  }
+
+  // read battery voltage
+  batteryVoltage = readBattery(false);
+  if ((Serial || batteryVoltage > BATTERY_ON_CHARGE || cache.powerOnCnt > 0) && FLASH_LED)
+  {
+    digitalWrite(LED_BUILTIN, HIGH); // Serial USB plugged in, we are on charge or have just been turned on - turn the LED on as not running from battery
+  }
+  // if (Serial)
+  //   Serial.printf("Voltage: %4.3f V\r\n", batteryVoltage);
+
+  int alarmStatus = 0;
+  GasBreakout::Reading reading = readSensor();
+  if (cache.powerOnCnt == 0 && !alarmStatus)
+  {
+    // Only power off the sensor until we have a settled set of results after initial power up
+    // Also leave it on if there has been a significant change in sensor readings
+    // Otherwise turn off the power
+    digitalWrite(SENSOR_POWER_PIN, LOW); // Turn off  power to the sensor
+  }
+  if (cache.powerOnCnt == 0 && reading.ref != 0)
+  {
+    // Not in powerOnCnt settle period and we have readings - check whether in alarm status
+    alarmStatus = checkAlarmCondition(&reading);
+    // Drive Piezo if in critical alarm
+    driveSounder(alarmStatus);
+    // Stash reading in the cache
+    cacheResults(alarmStatus, batteryVoltage, &reading);
+  }
+  // Send cached data when half full or if there is an alarm or if battery critical and something to send
+  if (cache.resultsCacheCnt >= CACHE_SIZE / 2 || (cache.resultsCacheCnt > 0 && (alarmStatus > 0 || batteryVoltage < CRITICALLY_LOW_BATTERY_VOLTAGE)))
+  {
+    sendResults();
+  }
+  if (batteryVoltage > BATTERY_ON_CHARGE && FLASH_LED)
+  {
+    digitalWrite(LED_BUILTIN, LOW);
+  }
+  if (cache.powerOnCnt > 0)
+  {
+    // If only just powered on or hard reset - ignore the first set of readings and read every second
+    cache.powerOnCnt--;
+    stayAwake = true;
+    // Delay, dont sleep
+    delay(1000);
+    // Only sleep briefly as this increases the sensitivity of the sensor
     // Do this at initial start up and when we detect a significant change in gas resistance.
-    stayAwake = false;
-    if (inTestMode)
-    {
-      // Turn on led and drive sounder while button is pressed
-      digitalWrite(LED_BUILTIN, HIGH);
-      digitalWrite(SOUNDER_PIN, HIGH); // Turn sounder on
-      while (inTestMode)
-      {
-        inTestMode = !digitalRead(TEST_PIN);
-        delay(100);
-      }
-      digitalWrite(SOUNDER_PIN, LOW); // Turn sounder on
-      // Test button has been released - now carry on as though we have been asleep
-    }
-
-    // read battery voltage
-    batteryVoltage = readBattery(false);
-    if ((Serial || batteryVoltage > BATTERY_ON_CHARGE || cache.powerOnCnt > 0) && FLASH_LED)
-    {
-      digitalWrite(LED_BUILTIN, HIGH); // Serial USB plugged in, we are on charge or have just been turned on - turn the LED on as not running from battery
-    }
-    // if (Serial)
-    //   Serial.printf("Voltage: %4.3f V\r\n", batteryVoltage);
-
-    int alarmStatus = 0;
-    GasBreakout::Reading reading = readSensor();
-    if (cache.powerOnCnt == 0 && !alarmStatus)
-    {
-      // Only power off the sensor until we have a settled set of results after initial power up
-      // Also leave it on if there has been a significant change in sensor readings
-      // Otherwise turn off the power
-      digitalWrite(SENSOR_POWER_PIN, LOW); // Turn off  power to the sensor
-    }
-    if (cache.powerOnCnt == 0 && reading.ref != 0)
-    {
-      // Not in powerOnCnt settle period and we have readings - check whether in alarm status
-      alarmStatus = checkAlarmCondition(&reading);
-      // Drive Piezo if in critical alarm
-      driveSounder(alarmStatus);
-      // Stash reading in the cache
-      cacheResults(alarmStatus, batteryVoltage, &reading);
-    }
-    // Send cached data when half full or if there is an alarm or if battery critical and something to send
-    if (cache.resultsCacheCnt >= CACHE_SIZE / 2 || (cache.resultsCacheCnt > 0 && (alarmStatus > 0 || batteryVoltage < CRITICALLY_LOW_BATTERY_VOLTAGE)))
-    {
-      sendResults();
-    }
-    if (batteryVoltage > BATTERY_ON_CHARGE && FLASH_LED)
-    {
-      digitalWrite(LED_BUILTIN, LOW);
-    }
-    if (cache.powerOnCnt > 0)
-    {
-      // If only just powered on or hard reset - ignore the first set of readings and read every second
-      cache.powerOnCnt--;
-      stayAwake = true;
-      //Delay, dont sleep
-      delay(1000);
-    }
-    if (alarmStatus > 0)
-    {
-      // Reduce sleep time if there is something in the air...
-      sleepTimeSecs = CRITICAL_TIME_TO_SLEEP;
-      // sleepTimeSecs = WARNING_TIME_TO_SLEEP;
-      // if (alarmStatus & 0x02 || alarmStatus & 0x04 || alarmStatus == 0x10) {
-      //   sleepTimeSecs = HIGH_TIME_TO_SLEEP;
-      // } else if (alarmStatus & 0x03 || alarmStatus & 0x0C || alarmStatus == 0x30) {
-      //   sleepTimeSecs = CRITICAL_TIME_TO_SLEEP;
-      // }
-      stayAwake = true;
-      //Delay, dont sleep
-      delay(sleepTimeSecs * 1000);
-    }
+    sleepTimeSecs = 0; // No sleep - just restart
+  }
+  if (alarmStatus > 0)
+  {
+    // Reduce sleep time if there is something in the air...
+    sleepTimeSecs = CRITICAL_TIME_TO_SLEEP;
+    // sleepTimeSecs = WARNING_TIME_TO_SLEEP;
+    // if (alarmStatus & 0x02 || alarmStatus & 0x04 || alarmStatus == 0x10) {
+    //   sleepTimeSecs = HIGH_TIME_TO_SLEEP;
+    // } else if (alarmStatus & 0x03 || alarmStatus & 0x0C || alarmStatus == 0x30) {
+    //   sleepTimeSecs = CRITICAL_TIME_TO_SLEEP;
+    // }
+    // Delay, dont sleep
+    delay(sleepTimeSecs * 1000);
+    // Only sleep briefly as this increases the sensitivity of the sensor
+    // Do this at initial start up and when we detect a significant change in gas resistance.
+    sleepTimeSecs = 0; // No sleep - just restart
   }
 
   if (batteryVoltage < CRITICALLY_LOW_BATTERY_VOLTAGE)
