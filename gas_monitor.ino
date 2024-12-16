@@ -16,9 +16,9 @@
 #define BUTTON_PIN_BITMASK(GPIO) (1ULL << GPIO) // 2 ^ GPIO_NUMBER in hex
 
 #define BATTERY_ON_CHARGE 4.1
-#define LOW_BATTERY_VOLTAGE 3.20
-#define VERY_LOW_BATTERY_VOLTAGE 3.10
-#define CRITICALLY_LOW_BATTERY_VOLTAGE 3.00
+#define LOW_BATTERY_VOLTAGE 3.40
+#define VERY_LOW_BATTERY_VOLTAGE 3.20
+#define CRITICALLY_LOW_BATTERY_VOLTAGE 3.10
 #define uS_TO_S_FACTOR 1000000ULL /* Conversion factor for micro seconds to seconds */
 #define NORMAL_TIME_TO_SLEEP 30   /* Time ESP32 will go to sleep (in seconds) */
 #define WARNING_TIME_TO_SLEEP 15  /* Time ESP32 will go to sleep if in warning condition (in seconds) */
@@ -192,7 +192,7 @@ uint8_t checkAlarmCondition(GasBreakout::Reading *gas)
   // If only NH3 triggers it is likely to be NH3/Ammonia
   // Important note: Reducing + NH3 sensors decrease in resistance with increasing gas. The Oxidiser increases in resistance
   // Have a valid reading
-  if (cache.totalSampleCnt > 30)
+  if (cache.totalSampleCnt >= 100)
   {
     // Have a good average sample value to test
     // Now check for NH3 - if this has triggered then likely that its NH3, not CO that has triggered the sensor
@@ -271,7 +271,8 @@ uint8_t checkAlarmCondition(GasBreakout::Reading *gas)
     }
   }
 
-  if (alarmStatus & 0x7F == 0)
+  // if (Serial) Serial.println("Alarm status: " + String(alarmStatus));
+  if ((alarmStatus & 0x7F) == 0)
   {
     // Only add current values to average if not in an alarm status
     // As the average is the normal baseline
@@ -281,13 +282,13 @@ uint8_t checkAlarmCondition(GasBreakout::Reading *gas)
     cache.totalOx += gas->oxidising;
     if (cache.totalSampleCnt >= 1000)
     {
-      // Divide sample count and total by 10.
-      // This allows more recent samples to have a greater impact on the average, allowing for some drift in the sensor
-      //  Serial.println("Scaling down total samplecnt" );
-      cache.totalSampleCnt /= 10;
-      cache.totalReducer /= 10;
-      cache.totalNh3 /= 10;
-      cache.totalOx /= 10;
+        // Divide sample count and total by 10.
+        // This allows more recent samples to have a greater impact on the average, allowing for some drift in the sensor
+        //  Serial.println("Scaling down total samplecnt" );
+        cache.totalSampleCnt /= 10;
+        cache.totalReducer /= 10;
+        cache.totalNh3 /= 10;
+        cache.totalOx /= 10;
     }
   }
   return alarmStatus;
@@ -408,6 +409,7 @@ void sendResults()
 {
   if (Serial)
     Serial.println("Sending results: " + String(cache.resultsCacheCnt));
+  WiFi.setTxPower(WIFI_POWER_11dBm);
   WiFi.begin(ssid, password);
   int maxWait = 5000; // max wait for connection of 5seconds
   while (WiFi.status() != WL_CONNECTED && maxWait > 0)
@@ -607,13 +609,6 @@ void setup(void)
 
   int alarmStatus = 0;
   GasBreakout::Reading reading = readSensor();
-  if (cache.powerOnCnt == 0 && !alarmStatus)
-  {
-    // Only power off the sensor until we have a settled set of results after initial power up
-    // Also leave it on if there has been a significant change in sensor readings
-    // Otherwise turn off the power
-    digitalWrite(SENSOR_POWER_PIN, LOW); // Turn off  power to the sensor
-  }
   if (cache.powerOnCnt == 0 && reading.ref != 0)
   {
     // Not in powerOnCnt settle period and we have readings - check whether in alarm status
@@ -624,7 +619,7 @@ void setup(void)
     cacheResults(alarmStatus, batteryVoltage, &reading);
   }
   // Send cached data when half full or if there is an alarm or if battery critical and something to send
-  if (cache.resultsCacheCnt >= CACHE_SIZE / 2 || (cache.resultsCacheCnt > 0 && (alarmStatus > 0 || batteryVoltage < CRITICALLY_LOW_BATTERY_VOLTAGE)))
+  if (cache.resultsCacheCnt >= CACHE_SIZE / 2 || (cache.resultsCacheCnt > 0 && ((alarmStatus & 0x7F) > 0 || batteryVoltage < CRITICALLY_LOW_BATTERY_VOLTAGE)))
   {
     sendResults();
   }
@@ -632,34 +627,6 @@ void setup(void)
   {
     digitalWrite(LED_BUILTIN, LOW);
   }
-  if (cache.powerOnCnt > 0)
-  {
-    // If only just powered on or hard reset - ignore the first set of readings and read every second
-    cache.powerOnCnt--;
-    stayAwake = true;
-    // Delay, dont sleep
-    delay(1000);
-    // Only sleep briefly as this increases the sensitivity of the sensor
-    // Do this at initial start up and when we detect a significant change in gas resistance.
-    sleepTimeSecs = 0; // No sleep - just restart
-  }
-  if (alarmStatus > 0)
-  {
-    // Reduce sleep time if there is something in the air...
-    sleepTimeSecs = CRITICAL_TIME_TO_SLEEP;
-    // sleepTimeSecs = WARNING_TIME_TO_SLEEP;
-    // if (alarmStatus & 0x02 || alarmStatus & 0x04 || alarmStatus == 0x10) {
-    //   sleepTimeSecs = HIGH_TIME_TO_SLEEP;
-    // } else if (alarmStatus & 0x03 || alarmStatus & 0x0C || alarmStatus == 0x30) {
-    //   sleepTimeSecs = CRITICAL_TIME_TO_SLEEP;
-    // }
-    // Delay, dont sleep
-    delay(sleepTimeSecs * 1000);
-    // Only sleep briefly as this increases the sensitivity of the sensor
-    // Do this at initial start up and when we detect a significant change in gas resistance.
-    sleepTimeSecs = 0; // No sleep - just restart
-  }
-
   if (batteryVoltage < CRITICALLY_LOW_BATTERY_VOLTAGE)
   {
     // if battery is below LOW_BATTERY_VOLTAGE but still above CRITICALLY_LOW_BATTERY_VOLTAGE,
@@ -692,7 +659,37 @@ void setup(void)
     // sleep ~1 minutes if battery is VERY_LOW_BATTERY_VOLTAGE to LOW_BATTERY_VOLTAGE
     sleepTimeSecs = (batteryVoltage >= VERY_LOW_BATTERY_VOLTAGE) ? 1 * 60ULL : 3 * 60ULL;
   }
-
+  if (cache.powerOnCnt > 0)
+  {
+    // If only just powered on or hard reset - ignore the first set of readings and read every second
+    cache.powerOnCnt--;
+    // Only sleep briefly as this increases the sensitivity of the sensor
+    // Do this at initial start up and when we detect a significant change in gas resistance.
+    sleepTimeSecs = 1; 
+  }
+  if (alarmStatus > 0)
+  {
+    // Reduce sleep time if there is something in the air...
+    // Only sleep briefly as this increases the sensitivity of the sensor
+    // Do this when we detect a significant change in gas resistance.
+    sleepTimeSecs = CRITICAL_TIME_TO_SLEEP;
+    // sleepTimeSecs = WARNING_TIME_TO_SLEEP;
+    // if (alarmStatus & 0x02 || alarmStatus & 0x04 || alarmStatus == 0x10) {
+    //   sleepTimeSecs = HIGH_TIME_TO_SLEEP;
+    // } else if (alarmStatus & 0x03 || alarmStatus & 0x0C || alarmStatus == 0x30) {
+    //   sleepTimeSecs = CRITICAL_TIME_TO_SLEEP;
+    // }
+    //Delay dont sleep, to keep sensor power on
+    delay(sleepTimeSecs * 1000);
+    sleepTimeSecs = 0;
+  }
+  if (cache.powerOnCnt == 0 && !alarmStatus)
+  {
+    // Only power off the sensor until we have a settled set of results after initial power up
+    // Also leave it on if there has been a significant change in sensor readings
+    // Otherwise turn off the power
+    digitalWrite(SENSOR_POWER_PIN, LOW); // Turn off  power to the sensor
+  }
   if (Serial)
   {
     Serial.println("Setup ESP32 to sleep for " + String(sleepTimeSecs) + " Seconds");
