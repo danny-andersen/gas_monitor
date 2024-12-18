@@ -39,12 +39,12 @@
 // CO 12.5x ~= 70ppm is critical limit - sound alarm
 #define CO_CRITICAL_THRESHOLD 0.08
 // NH3 25ppm recommended max, 35ppm is 15 min max, 50ppm is critical
-#define NH3_REDUCER_WARNING_THRESHOLD 0.5
-#define NH3_REDUCER_HIGH_THRESHOLD 0.4
-#define NH3_REDUCER_CRITICAL_THRESHOLD 0.3
-#define NH3_NH3_WARNING_THRESHOLD 0.5
-#define NH3_NH3_HIGH_THRESHOLD 0.4
-#define NH3_NH3_CRITICAL_THRESHOLD 0.3
+#define NH3_REDUCER_WARNING_THRESHOLD 0.6
+#define NH3_REDUCER_HIGH_THRESHOLD 0.5
+#define NH3_REDUCER_CRITICAL_THRESHOLD 0.4
+#define NH3_NH3_WARNING_THRESHOLD 0.6
+#define NH3_NH3_HIGH_THRESHOLD 0.5
+#define NH3_NH3_CRITICAL_THRESHOLD 0.4
 // NO2 max limit is 1ppm, 3ppm is high, 5 ppm is critical
 // No2 ~x7 for 1
 #define NO2_WARNING_THRESHOLD 7
@@ -261,11 +261,11 @@ uint8_t checkAlarmCondition(GasBreakout::Reading *gas)
       alarmStatus |= 0x30;
     }
     float reducerChgPerc = 100 * (gas->reducing - currentReducerAvg) / currentReducerAvg;
-    float nh3ChgPerc = 100 * (gas->nh3 - currentNh3Avg) / currentNh3Avg;
-    float oxChgPerc = 100 * (gas->oxidising - currentOxAvg) / currentOxAvg;
-    // Set bit 7 if there has been a significant change in a particular result from the average
+    // float nh3ChgPerc = 100 * (gas->nh3 - currentNh3Avg) / currentNh3Avg;
+    // float oxChgPerc = 100 * (gas->oxidising - currentOxAvg) / currentOxAvg;
+    // Set bit 7 if there has been a significant change in a particular result from the average reducer
     // This will increase the sample rate and also keep the sensor awake and powered on - the sensitivity graphs are based on power being continuously ON
-    if (reducerChgPerc <= -15 || nh3ChgPerc <= -15 || oxChgPerc >= 20)
+    if (reducerChgPerc <= -15)
     {
       alarmStatus |= 0x80;
     }
@@ -312,7 +312,8 @@ GasBreakout::Reading readSensor()
     gasReady = gas.initialise();
     if (gasReady)
     {
-      delay(1000);
+      //Let sensor settle after powering up
+      delay(500);
       if (Serial)
         Serial.println("MICS6814 - Initialised");
       reading = gas.readAll();
@@ -409,7 +410,7 @@ void sendResults()
 {
   if (Serial)
     Serial.println("Sending results: " + String(cache.resultsCacheCnt));
-  WiFi.setTxPower(WIFI_POWER_11dBm);
+  WiFi.setTxPower(WIFI_POWER_7dBm);
   WiFi.begin(ssid, password);
   int maxWait = 5000; // max wait for connection of 5seconds
   while (WiFi.status() != WL_CONNECTED && maxWait > 0)
@@ -618,6 +619,13 @@ void setup(void)
     // Stash reading in the cache
     cacheResults(alarmStatus, batteryVoltage, &reading);
   }
+  if (cache.powerOnCnt == 0 && !alarmStatus)
+  {
+    // Only power off the sensor until we have a settled set of results after initial power up
+    // Also leave it on if there has been a significant change in sensor readings
+    // Otherwise turn off the power
+    digitalWrite(SENSOR_POWER_PIN, LOW); // Turn off  power to the sensor
+  }
   // Send cached data when half full or if there is an alarm or if battery critical and something to send
   if (cache.resultsCacheCnt >= CACHE_SIZE / 2 || (cache.resultsCacheCnt > 0 && ((alarmStatus & 0x7F) > 0 || batteryVoltage < CRITICALLY_LOW_BATTERY_VOLTAGE)))
   {
@@ -640,6 +648,7 @@ void setup(void)
     //  esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_OFF);
     //  esp_sleep_pd_config(ESP_PD_DOMAIN_XTAL, ESP_PD_OPTION_OFF);
     //  esp_sleep_pd_config(ESP_PD_DOMAIN_VDDSDIO, ESP_PD_OPTION_OFF);
+
     // esp_sleep_pd_config(ESP_PD_DOMAIN_CPU, ESP_PD_OPTION_OFF);
 
     // disable all wakeup sources
@@ -650,6 +659,7 @@ void setup(void)
 
     return;
   }
+
   if (cache.powerOnCnt <= 0 && sleepTimeSecs != CRITICAL_TIME_TO_SLEEP && batteryVoltage < LOW_BATTERY_VOLTAGE)
   {
     // Not in alarm but battery is running low
@@ -672,23 +682,15 @@ void setup(void)
     // Reduce sleep time if there is something in the air...
     // Only sleep briefly as this increases the sensitivity of the sensor
     // Do this when we detect a significant change in gas resistance.
-    sleepTimeSecs = CRITICAL_TIME_TO_SLEEP;
-    // sleepTimeSecs = WARNING_TIME_TO_SLEEP;
-    // if (alarmStatus & 0x02 || alarmStatus & 0x04 || alarmStatus == 0x10) {
-    //   sleepTimeSecs = HIGH_TIME_TO_SLEEP;
-    // } else if (alarmStatus & 0x03 || alarmStatus & 0x0C || alarmStatus == 0x30) {
-    //   sleepTimeSecs = CRITICAL_TIME_TO_SLEEP;
-    // }
+    sleepTimeSecs = WARNING_TIME_TO_SLEEP;
+    if (alarmStatus & 0x02 || alarmStatus & 0x04 || alarmStatus == 0x10) {
+      sleepTimeSecs = HIGH_TIME_TO_SLEEP;
+    } else if (alarmStatus & 0x03 || alarmStatus & 0x0C || alarmStatus == 0x30) {
+      sleepTimeSecs = CRITICAL_TIME_TO_SLEEP;
+    }
     //Delay dont sleep, to keep sensor power on
     delay(sleepTimeSecs * 1000);
     sleepTimeSecs = 0;
-  }
-  if (cache.powerOnCnt == 0 && !alarmStatus)
-  {
-    // Only power off the sensor until we have a settled set of results after initial power up
-    // Also leave it on if there has been a significant change in sensor readings
-    // Otherwise turn off the power
-    digitalWrite(SENSOR_POWER_PIN, LOW); // Turn off  power to the sensor
   }
   if (Serial)
   {
