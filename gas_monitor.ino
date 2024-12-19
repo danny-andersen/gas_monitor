@@ -682,12 +682,12 @@ void setup(void)
     // Reduce sleep time if there is something in the air...
     // Only sleep briefly as this increases the sensitivity of the sensor
     // Do this when we detect a significant change in gas resistance.
-    sleepTimeSecs = WARNING_TIME_TO_SLEEP;
-    if (alarmStatus & 0x02 || alarmStatus & 0x04 || alarmStatus == 0x10) {
-      sleepTimeSecs = HIGH_TIME_TO_SLEEP;
-    } else if (alarmStatus & 0x03 || alarmStatus & 0x0C || alarmStatus == 0x30) {
-      sleepTimeSecs = CRITICAL_TIME_TO_SLEEP;
-    }
+    sleepTimeSecs = CRITICAL_TIME_TO_SLEEP;
+    // if (alarmStatus & 0x02 || alarmStatus & 0x04 || alarmStatus == 0x10) {
+    //   sleepTimeSecs = HIGH_TIME_TO_SLEEP;
+    // } else if (alarmStatus & 0x03 || alarmStatus & 0x0C || alarmStatus == 0x30) {
+    //   sleepTimeSecs = CRITICAL_TIME_TO_SLEEP;
+    // }
     //Delay dont sleep, to keep sensor power on
     delay(sleepTimeSecs * 1000);
     sleepTimeSecs = 0;
