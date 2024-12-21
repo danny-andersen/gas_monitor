@@ -17,11 +17,11 @@
 
 #define BATTERY_ON_CHARGE 4.1
 #define LOW_BATTERY_VOLTAGE 3.40
-#define VERY_LOW_BATTERY_VOLTAGE 3.20
-#define CRITICALLY_LOW_BATTERY_VOLTAGE 3.10
+#define VERY_LOW_BATTERY_VOLTAGE 3.30
+#define CRITICALLY_LOW_BATTERY_VOLTAGE 3.20
 #define uS_TO_S_FACTOR 1000000ULL /* Conversion factor for micro seconds to seconds */
 #define NORMAL_TIME_TO_SLEEP 30   /* Time ESP32 will go to sleep (in seconds) */
-#define WARNING_TIME_TO_SLEEP 15  /* Time ESP32 will go to sleep if in warning condition (in seconds) */
+#define WARNING_TIME_TO_SLEEP 10  /* Time ESP32 will go to sleep if in warning condition (in seconds) */
 #define HIGH_TIME_TO_SLEEP 5      /* Time ESP32 will go to sleep if in high alarm condition (in seconds) */
 #define CRITICAL_TIME_TO_SLEEP 2  /* Time ESP32 will go to sleep in critical alarm (in seconds) */
 
@@ -312,8 +312,6 @@ GasBreakout::Reading readSensor()
     gasReady = gas.initialise();
     if (gasReady)
     {
-      //Let sensor settle after powering up
-      delay(500);
       if (Serial)
         Serial.println("MICS6814 - Initialised");
       reading = gas.readAll();
@@ -535,7 +533,7 @@ void setup(void)
   // Turn on power to the sensor
   pinMode(SENSOR_POWER_PIN, OUTPUT);
   digitalWrite(SENSOR_POWER_PIN, HIGH);
-  delay(100);   // Let sensor power up
+  delay(300);   // Let sensor power up
   Wire.begin(); // I2C mode
   if (esp_reset_reason() == ESP_RST_POWERON)
   {
