@@ -265,7 +265,7 @@ uint8_t checkAlarmCondition(GasBreakout::Reading *gas)
     // float oxChgPerc = 100 * (gas->oxidising - currentOxAvg) / currentOxAvg;
     // Set bit 7 if there has been a significant change in a particular result from the average reducer
     // This will increase the sample rate and also keep the sensor awake and powered on - the sensitivity graphs are based on power being continuously ON
-    if (reducerChgPerc <= -15)
+    if (reducerChgPerc <= -20)
     {
       alarmStatus |= 0x80;
     }
@@ -282,13 +282,13 @@ uint8_t checkAlarmCondition(GasBreakout::Reading *gas)
     cache.totalOx += gas->oxidising;
     if (cache.totalSampleCnt >= 1000)
     {
-        // Divide sample count and total by 10.
-        // This allows more recent samples to have a greater impact on the average, allowing for some drift in the sensor
-        //  Serial.println("Scaling down total samplecnt" );
-        cache.totalSampleCnt /= 10;
-        cache.totalReducer /= 10;
-        cache.totalNh3 /= 10;
-        cache.totalOx /= 10;
+      // Divide sample count and total by 10.
+      // This allows more recent samples to have a greater impact on the average, allowing for some drift in the sensor
+      //  Serial.println("Scaling down total samplecnt" );
+      cache.totalSampleCnt /= 10;
+      cache.totalReducer /= 10;
+      cache.totalNh3 /= 10;
+      cache.totalOx /= 10;
     }
   }
   return alarmStatus;
@@ -296,8 +296,10 @@ uint8_t checkAlarmCondition(GasBreakout::Reading *gas)
 
 void driveSounder(uint8_t alarmStatus)
 {
-  if (alarmStatus & 0x03 == 0x03 || alarmStatus & 0x0C == 0x0C || alarmStatus & 0x30 == 0x30)
+  // if (alarmStatus & 0x03 == 0x03 || alarmStatus & 0x0C == 0x0C || alarmStatus & 0x30 == 0x30)
+  if (alarmStatus & 0x7F > 0)
   {
+    // Sound on any gas detection
     digitalWrite(SOUNDER_PIN, HIGH); // turn the Piezo on to make it buzz.
   }
 }
@@ -533,7 +535,7 @@ void setup(void)
   // Turn on power to the sensor
   pinMode(SENSOR_POWER_PIN, OUTPUT);
   digitalWrite(SENSOR_POWER_PIN, HIGH);
-  delay(300);   // Let sensor power up
+  delay(200);   // Let sensor power up
   Wire.begin(); // I2C mode
   if (esp_reset_reason() == ESP_RST_POWERON)
   {
@@ -673,7 +675,7 @@ void setup(void)
     cache.powerOnCnt--;
     // Only sleep briefly as this increases the sensitivity of the sensor
     // Do this at initial start up and when we detect a significant change in gas resistance.
-    sleepTimeSecs = 1; 
+    sleepTimeSecs = 1;
   }
   if (alarmStatus > 0)
   {
@@ -686,7 +688,7 @@ void setup(void)
     // } else if (alarmStatus & 0x03 || alarmStatus & 0x0C || alarmStatus == 0x30) {
     //   sleepTimeSecs = CRITICAL_TIME_TO_SLEEP;
     // }
-    //Delay dont sleep, to keep sensor power on
+    // Delay dont sleep, to keep sensor power on
     delay(sleepTimeSecs * 1000);
     sleepTimeSecs = 0;
   }
