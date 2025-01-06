@@ -601,7 +601,8 @@ void setup(void)
 
   // read battery voltage
   batteryVoltage = readBattery(false);
-  if ((Serial || batteryVoltage > BATTERY_ON_CHARGE || cache.powerOnCnt > 0) && FLASH_LED)
+  bool onCharge = batteryVoltage > BATTERY_ON_CHARGE;
+  if ((Serial || onCharge || cache.powerOnCnt > 0) && FLASH_LED)
   {
     digitalWrite(LED_BUILTIN, HIGH); // Serial USB plugged in, we are on charge or have just been turned on - turn the LED on as not running from battery
   }
@@ -619,10 +620,10 @@ void setup(void)
     // Stash reading in the cache
     cacheResults(alarmStatus, batteryVoltage, &reading);
   }
-  if (cache.powerOnCnt == 0 && !alarmStatus)
+  if (cache.powerOnCnt == 0 && !alarmStatus && !onCharge)
   {
     // Only power off the sensor until we have a settled set of results after initial power up
-    // Also leave it on if there has been a significant change in sensor readings
+    // Also leave it on if there has been a significant change in sensor readings or we are on charge
     // Otherwise turn off the power
     digitalWrite(SENSOR_POWER_PIN, LOW); // Turn off  power to the sensor
   }
@@ -680,15 +681,15 @@ void setup(void)
   if (alarmStatus > 0)
   {
     // Reduce sleep time if there is something in the air...
-    // Only sleep briefly as this increases the sensitivity of the sensor
-    // Do this when we detect a significant change in gas resistance.
-    sleepTimeSecs = CRITICAL_TIME_TO_SLEEP;
-    // if (alarmStatus & 0x02 || alarmStatus & 0x04 || alarmStatus == 0x10) {
-    //   sleepTimeSecs = HIGH_TIME_TO_SLEEP;
-    // } else if (alarmStatus & 0x03 || alarmStatus & 0x0C || alarmStatus == 0x30) {
-    //   sleepTimeSecs = CRITICAL_TIME_TO_SLEEP;
-    // }
-    // Delay dont sleep, to keep sensor power on
+    sleepTimeSecs = WARNING_TIME_TO_SLEEP;
+    if (alarmStatus & 0x02 || alarmStatus & 0x04 || alarmStatus == 0x10) {
+      sleepTimeSecs = HIGH_TIME_TO_SLEEP;
+    } else if (alarmStatus & 0x03 || alarmStatus & 0x0C || alarmStatus == 0x30) {
+      sleepTimeSecs = CRITICAL_TIME_TO_SLEEP;
+    }
+  }
+  if (onCharge) {
+    // Delay dont sleep, to keep sensor powered on
     delay(sleepTimeSecs * 1000);
     sleepTimeSecs = 0;
   }
