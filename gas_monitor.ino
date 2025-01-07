@@ -15,15 +15,16 @@
 #define ADD_I2C 0x77
 #define BUTTON_PIN_BITMASK(GPIO) (1ULL << GPIO) // 2 ^ GPIO_NUMBER in hex
 
-#define BATTERY_ON_CHARGE 4.1
+#define BATTERY_FULL 3.85
 #define LOW_BATTERY_VOLTAGE 3.40
 #define VERY_LOW_BATTERY_VOLTAGE 3.30
 #define CRITICALLY_LOW_BATTERY_VOLTAGE 3.20
 #define uS_TO_S_FACTOR 1000000ULL /* Conversion factor for micro seconds to seconds */
-#define NORMAL_TIME_TO_SLEEP 30   /* Time ESP32 will go to sleep (in seconds) */
-#define WARNING_TIME_TO_SLEEP 10  /* Time ESP32 will go to sleep if in warning condition (in seconds) */
-#define HIGH_TIME_TO_SLEEP 5      /* Time ESP32 will go to sleep if in high alarm condition (in seconds) */
-#define CRITICAL_TIME_TO_SLEEP 2  /* Time ESP32 will go to sleep in critical alarm (in seconds) */
+#define FULL_POWER_TIME_TO_SLEEP 10   /* Time ESP32 will go to sleep (in seconds) */
+#define NORMAL_TIME_TO_SLEEP 30   /* Time ESP32 will go to sleep (in seconds) when under battery power */
+#define WARNING_TIME_TO_SLEEP 3  /* Time ESP32 will go to sleep if in warning condition (in seconds) */
+#define HIGH_TIME_TO_SLEEP 1      /* Time ESP32 will go to sleep if in high alarm condition (in seconds) */
+#define CRITICAL_TIME_TO_SLEEP 1  /* Time ESP32 will go to sleep in critical alarm (in seconds) */
 
 #define FLASH_LED true
 #define CACHE_SIZE 32   // Number of results that are cached
@@ -33,17 +34,17 @@
 
 // Reducer response is x10 for 50ppm, x100 for 1000ppm
 //  CO ~x2 for 10ppm (9ppm is safe limit for CO)
-#define CO_WARNING_THRESHOLD 0.5
+#define CO_WARNING_THRESHOLD 0.4
 // CO 10x == 50ppm is safe 8 hour limit
-#define CO_HIGH_THRESHOLD 0.1
+#define CO_HIGH_THRESHOLD 0.2
 // CO 12.5x ~= 70ppm is critical limit - sound alarm
 #define CO_CRITICAL_THRESHOLD 0.08
 // NH3 25ppm recommended max, 35ppm is 15 min max, 50ppm is critical
-#define NH3_REDUCER_WARNING_THRESHOLD 0.6
-#define NH3_REDUCER_HIGH_THRESHOLD 0.5
+#define NH3_REDUCER_WARNING_THRESHOLD 0.8
+#define NH3_REDUCER_HIGH_THRESHOLD 0.6
 #define NH3_REDUCER_CRITICAL_THRESHOLD 0.4
-#define NH3_NH3_WARNING_THRESHOLD 0.6
-#define NH3_NH3_HIGH_THRESHOLD 0.5
+#define NH3_NH3_WARNING_THRESHOLD 0.8
+#define NH3_NH3_HIGH_THRESHOLD 0.6
 #define NH3_NH3_CRITICAL_THRESHOLD 0.4
 // NO2 max limit is 1ppm, 3ppm is high, 5 ppm is critical
 // No2 ~x7 for 1
@@ -582,7 +583,6 @@ void setup(void)
     powerOn();
   }
   bool stayAwake = false;
-  uint64_t sleepTimeSecs = NORMAL_TIME_TO_SLEEP;
   float batteryVoltage = 0.0;
   stayAwake = false;
   if (inTestMode)
@@ -601,8 +601,8 @@ void setup(void)
 
   // read battery voltage
   batteryVoltage = readBattery(false);
-  bool onCharge = batteryVoltage > BATTERY_ON_CHARGE;
-  if ((Serial || onCharge || cache.powerOnCnt > 0) && FLASH_LED)
+  bool batteryFull = batteryVoltage >= BATTERY_FULL;
+  if ((Serial || batteryFull || cache.powerOnCnt > 0) && FLASH_LED)
   {
     digitalWrite(LED_BUILTIN, HIGH); // Serial USB plugged in, we are on charge or have just been turned on - turn the LED on as not running from battery
   }
@@ -620,7 +620,7 @@ void setup(void)
     // Stash reading in the cache
     cacheResults(alarmStatus, batteryVoltage, &reading);
   }
-  if (cache.powerOnCnt == 0 && !alarmStatus && !onCharge)
+  if (cache.powerOnCnt == 0 && !alarmStatus && !batteryFull)
   {
     // Only power off the sensor until we have a settled set of results after initial power up
     // Also leave it on if there has been a significant change in sensor readings or we are on charge
@@ -632,7 +632,7 @@ void setup(void)
   {
     sendResults();
   }
-  if (batteryVoltage > BATTERY_ON_CHARGE && FLASH_LED)
+  if (batteryFull && FLASH_LED)
   {
     digitalWrite(LED_BUILTIN, LOW);
   }
@@ -661,15 +661,7 @@ void setup(void)
     return;
   }
 
-  if (cache.powerOnCnt <= 0 && sleepTimeSecs != CRITICAL_TIME_TO_SLEEP && batteryVoltage < LOW_BATTERY_VOLTAGE)
-  {
-    // Not in alarm but battery is running low
-    if (Serial)
-      Serial.println("Battery low, sleeping for longer...");
-    // sleep ~3 minutes if battery is CRITICALLY_LOW_BATTERY_VOLTAGE to VERY_LOW_BATTERY_VOLTAGE
-    // sleep ~1 minutes if battery is VERY_LOW_BATTERY_VOLTAGE to LOW_BATTERY_VOLTAGE
-    sleepTimeSecs = (batteryVoltage >= VERY_LOW_BATTERY_VOLTAGE) ? 1 * 60ULL : 3 * 60ULL;
-  }
+  uint64_t sleepTimeSecs = batteryFull ? FULL_POWER_TIME_TO_SLEEP : NORMAL_TIME_TO_SLEEP;
   if (cache.powerOnCnt > 0)
   {
     // If only just powered on or hard reset - ignore the first set of readings and read every second
@@ -687,8 +679,17 @@ void setup(void)
     } else if (alarmStatus & 0x03 || alarmStatus & 0x0C || alarmStatus == 0x30) {
       sleepTimeSecs = CRITICAL_TIME_TO_SLEEP;
     }
+  } 
+  if (alarmStatus == 0 && batteryVoltage < LOW_BATTERY_VOLTAGE)
+  {
+    // Not in alarm but battery is running low
+    if (Serial)
+      Serial.println("Battery low, sleeping for longer...");
+    // sleep ~3 minutes if battery is CRITICALLY_LOW_BATTERY_VOLTAGE to VERY_LOW_BATTERY_VOLTAGE
+    // sleep ~1 minutes if battery is VERY_LOW_BATTERY_VOLTAGE to LOW_BATTERY_VOLTAGE
+    sleepTimeSecs = (batteryVoltage >= VERY_LOW_BATTERY_VOLTAGE) ? 1 * 60ULL : 3 * 60ULL;
   }
-  if (onCharge) {
+  if (batteryFull || alarmStatus > 0) {
     // Delay dont sleep, to keep sensor powered on
     delay(sleepTimeSecs * 1000);
     sleepTimeSecs = 0;
