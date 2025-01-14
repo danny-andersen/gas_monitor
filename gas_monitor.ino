@@ -34,11 +34,11 @@
 
 // Reducer response is x10 for 50ppm, x100 for 1000ppm
 //  CO ~x2 for 10ppm (9ppm is safe limit for CO)
-#define CO_WARNING_THRESHOLD 0.4
+#define CO_WARNING_THRESHOLD 0.85
 // CO 10x == 50ppm is safe 8 hour limit
-#define CO_HIGH_THRESHOLD 0.2
-// CO 12.5x ~= 70ppm is critical limit - sound alarm
-#define CO_CRITICAL_THRESHOLD 0.08
+#define CO_HIGH_THRESHOLD 0.7
+// CO 12.5x ~= 70ppm is critical limit
+#define CO_CRITICAL_THRESHOLD 0.5
 // NH3 25ppm recommended max, 35ppm is 15 min max, 50ppm is critical
 #define NH3_REDUCER_WARNING_THRESHOLD 0.8
 #define NH3_REDUCER_HIGH_THRESHOLD 0.6
@@ -48,11 +48,11 @@
 #define NH3_NH3_CRITICAL_THRESHOLD 0.4
 // NO2 max limit is 1ppm, 3ppm is high, 5 ppm is critical
 // No2 ~x7 for 1
-#define NO2_WARNING_THRESHOLD 7
+#define NO2_WARNING_THRESHOLD 5
 // NO2 x20 for 3
-#define NO2_HIGH_THRESHOLD 15
+#define NO2_HIGH_THRESHOLD 10
 // NO2 x30 for 5
-#define NO2_CRITICAL_THRESHOLD 30
+#define NO2_CRITICAL_THRESHOLD 20
 
 GasBreakout gas(Wire, 0x19);
 RunningMedian medianFilter(FILTER_SIZE);
@@ -266,7 +266,7 @@ uint8_t checkAlarmCondition(GasBreakout::Reading *gas)
     // float oxChgPerc = 100 * (gas->oxidising - currentOxAvg) / currentOxAvg;
     // Set bit 7 if there has been a significant change in a particular result from the average reducer
     // This will increase the sample rate and also keep the sensor awake and powered on - the sensitivity graphs are based on power being continuously ON
-    if (reducerChgPerc <= -20)
+    if (reducerChgPerc <= -10)
     {
       alarmStatus |= 0x80;
     }
@@ -298,7 +298,7 @@ uint8_t checkAlarmCondition(GasBreakout::Reading *gas)
 void driveSounder(uint8_t alarmStatus)
 {
   // if (alarmStatus & 0x03 == 0x03 || alarmStatus & 0x0C == 0x0C || alarmStatus & 0x30 == 0x30)
-  if (alarmStatus & 0x7F > 0)
+  if ((alarmStatus & 0x7F) != 0)
   {
     // Sound on any gas detection
     digitalWrite(SOUNDER_PIN, HIGH); // turn the Piezo on to make it buzz.
@@ -446,7 +446,7 @@ void sendResults()
           // time has rolled over - just use the sampleTime
           delta = now;
         }
-        if (Serial)
+        if (Serial) 
           Serial.println("Sample: " + String(i) + " Time: " + String(cache.resultsTimestamp[i]) + " Delta: " + String(delta));
         client.println("GET /airqual?&delta=" + String(delta) + String(cache.resultsCache[i]) + footer);
         client.println();
@@ -689,6 +689,10 @@ void setup(void)
     // sleep ~1 minutes if battery is VERY_LOW_BATTERY_VOLTAGE to LOW_BATTERY_VOLTAGE
     sleepTimeSecs = (batteryVoltage >= VERY_LOW_BATTERY_VOLTAGE) ? 1 * 60ULL : 3 * 60ULL;
   }
+  //NOTE: The original design was for the device to use the sleep function to powerdown the MCU as well as power to the Sensor. 
+  //This allowed the device to run on battery power for over a month. However the sensitivity of the sensor was greatly reduced and the variablity of the resistance readings was too great
+  //to make accurate measurements of the gas levels. The datasheet for the sensor is only valid if the power is maintained on the device and so this has been changed to delay, rather than sleep 
+  //to keep the device powered when we have a good battery voltage, i.e. essentially on +5v supply. This makes the resistance readings much more stable and so sensitivity can be increased.
   if (batteryFull || alarmStatus > 0) {
     // Delay dont sleep, to keep sensor powered on
     delay(sleepTimeSecs * 1000);
